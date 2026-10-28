@@ -7,6 +7,8 @@ import { Router } from 'express';
 import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config/env.js';
 import { AppError } from '../src/http/errors.js';
+import { z } from 'zod';
+import { validate } from '../src/http/validate.js';
 import { startServer } from '../src/server.js';
 
 const logger = { info() {}, error() {}, warn() {} };
@@ -68,6 +70,20 @@ test('module registration, expected errors and rejected async handlers', async t
   }
   const response = await fetch(`${base}/api/test/echo`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"value":42}' });
   assert.deepEqual(await response.json(), { data: { value: 42 } });
+});
+
+test('schema validation failures return 422 with field details', async t => {
+  const router = Router();
+  router.post('/users', validate({ body: z.object({ email: z.email() }) }), (req, res) => res.status(201).json({ data: req.body }));
+  const base = await fixture(t, [{ path: '/test', router }]);
+  const send = body => fetch(`${base}/api/test/users`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const bad = await send({ email: 'not-an-email' });
+  assert.equal(bad.status, 422);
+  const body = await bad.json();
+  assert.equal(body.error.code, 'VALIDATION_ERROR');
+  assert.equal(body.error.details[0].path, 'email');
+  assert.equal(body.error.requestId, bad.headers.get('x-request-id'));
+  assert.equal((await send({ email: 'a@b.com' })).status, 201);
 });
 
 test('invalid JSON, oversized payloads and unsupported charset are safe errors', async t => {

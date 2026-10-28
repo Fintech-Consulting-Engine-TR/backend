@@ -1,12 +1,13 @@
 export class AppError extends Error {
   // Only deliberate, public-safe messages belong in AppError.
-  constructor(status, code, message) {
+  constructor(status, code, message, details) {
     super(message);
     if (!Number.isInteger(status) || status < 400 || status > 499) {
       throw new TypeError('AppError requires a 4xx status');
     }
     this.status = status;
     this.code = code;
+    if (details) this.details = details;
   }
 }
 
@@ -25,8 +26,9 @@ export function errorHandler(logger) {
     let status = 500;
     let code = 'INTERNAL_ERROR';
     let message = 'Internal server error';
+    let details;
     if (err instanceof AppError) {
-      ({ status, code, message } = err);
+      ({ status, code, message, details } = err);
     } else if (err?.type === 'entity.parse.failed') {
       status = 400; code = 'INVALID_JSON'; message = 'Request body must be valid JSON';
     } else if (err?.type === 'entity.too.large') {
@@ -38,6 +40,6 @@ export function errorHandler(logger) {
     }
     // Do not log arbitrary error messages, bodies, URLs or headers: they can contain secrets.
     if (status === 500) logger.error({ requestId: req.requestId, code }, 'Request failed');
-    res.status(status).json({ error: { code, message, requestId: req.requestId } });
+    res.status(status).json({ error: { code, message, ...(details && { details }), requestId: req.requestId } });
   };
 }
