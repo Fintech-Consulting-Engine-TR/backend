@@ -1,0 +1,37 @@
+{
+  "name": "fintech-consulting-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Modular monolith backend core for Fintech Consulting Engine",
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test test/core.test.js",
+    "test:coverage": "node --test --experimental-test-coverage test/core.test.js",
+    "db:generate": "prisma generate",
+    "db:validate": "prisma validate",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev",
+    "db:status": "prisma migrate status",
+    "db:check": "node scripts/db-check.js",
+    "postinstall": "prisma generate",
+    "test:db": "RUN_DB_TESTS=1 node --test test/database.integration.js"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.9",
+    "express": "^5.3.0",
+    "helmet": "^8.3.0",
+    "pino": "^10.4.0",
+    "swagger-ui-express": "^5.0.1"
+  },
+  "devDependencies": {
+    "prisma": "^7.10.1"
+  }
+}

@@ -1,0 +1,33 @@
+node_modules/
+.env
+.env.*
+!.env.example
+coverage/
+*.log
+.DS_Store
+
+# Local database dumps and generated artifacts
+*.dump
+*.sql.gz
+
+# Credentials and local machine configuration
+.envrc
+.npmrc
+*.pem
+*.key
+*.p12
+*.pfx
+.aws/
+.codex/
+.idea/
+.vscode/
+
+# Temporary and macOS files
+tmp/
+temp/
+*.tmp
+*.swp
+*~
+._*
+.Spotlight-V100/
+.Trashes/
