@@ -7,7 +7,7 @@ const uuid = { type: 'string', format: 'uuid' };
 const nullableId = { ...uuid, nullable: true };
 const user = { type: 'object', nullable: true, required: ['id', 'email'], properties: { id: uuid, email: { type: 'string' } } };
 const recordFields = {
-  id: uuid, createdById: { ...nullableId, readOnly: true, description: 'Server-owned; null until authentication exists. Rejected in request bodies.' },
+  id: uuid, createdById: { ...nullableId, readOnly: true, description: 'Server-owned; set from the authenticated user for new records; null for legacy records. Rejected in request bodies.' },
   responsibleUserId: nullableId, createdBy: user, responsibleUser: user,
   createdAt: { type: 'string', format: 'date-time' }, updatedAt: { type: 'string', format: 'date-time' },
 };
@@ -19,12 +19,13 @@ export const crudSchemas = {
   UpdateContact: { ...toSchema(updateContact), minProperties: 1 },
   Company: {
     type: 'object', required: [...Object.keys(recordFields), 'name'],
-    properties: { ...recordFields, name: { type: 'string' } },
+    properties: { ...recordFields, name: { type: 'string' }, industry: { type: 'string', nullable: true }, website: { type: 'string', nullable: true }, custom: { type: 'object', additionalProperties: true } },
   },
   Contact: {
     type: 'object', required: [...Object.keys(recordFields), 'firstName', 'lastName', 'email', 'phone', 'companyId', 'company'],
     properties: {
-      ...recordFields, firstName: { type: 'string' }, lastName: { type: 'string' },
+      ...recordFields, firstName: { type: 'string', nullable: true }, lastName: { type: 'string', nullable: true },
+      full_name: { type: 'string' }, position: { type: 'string', nullable: true }, custom: { type: 'object', additionalProperties: true },
       email: { type: 'string', format: 'email', nullable: true, description: 'Trimmed, lowercase, globally unique when non-null.' },
       phone: { type: 'string', nullable: true }, companyId: uuid,
       company: { type: 'object', required: ['id', 'name'], properties: { id: uuid, name: { type: 'string' } } },
@@ -32,7 +33,7 @@ export const crudSchemas = {
   },
 };
 const errors = Object.fromEntries([
-  [400, 'Malformed JSON'], [403, 'Origin denied'], [404, 'Record or company not found'],
+  [400, 'Malformed JSON'], [401, 'Authentication required'], [403, 'Origin denied'], [404, 'Record or company not found'],
   [409, 'Duplicate email or foreign-key conflict; companies with contacts cannot be deleted'],
   [413, 'Payload too large'], [422, 'Invalid request or responsible user does not exist'], [500, 'Internal server error'],
 ].map(([code, description]) => [code, { description, content: { 'application/json': { schema: ref('Error') } } }]));
@@ -48,7 +49,7 @@ const result = (name, array = false) => ({
 });
 function operation(summary, name, { status = 200, array = false, parameters = [], body } = {}) {
   return {
-    summary, parameters,
+    summary, parameters, security: [{ bearerAuth: [] }],
     ...(body && { requestBody: { required: true, content: { 'application/json': { schema: ref(body) } } } }),
     responses: { ...errors, [status]: status === 204 ? { description: 'Deleted; no response body' } : result(name, array) },
   };

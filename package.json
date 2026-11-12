@@ -10,8 +10,9 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node --test test/core.test.js",
-    "test:coverage": "node --test --experimental-test-coverage test/core.test.js",
+    "test": "node --test test/core.test.js test/auth.test.js",
+    "test:coverage": "node --test --experimental-test-coverage test/core.test.js test/auth.test.js",
+    "admin:create": "node scripts/create-admin.js",
     "db:generate": "prisma generate",
     "db:validate": "prisma validate",
     "db:migrate": "prisma migrate deploy",
@@ -28,6 +29,7 @@
     "dotenv": "^18.0.9",
     "express": "^5.3.0",
     "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
     "pino": "^10.4.0",
     "swagger-ui-express": "^5.0.1",
     "zod": "^4.6.7"

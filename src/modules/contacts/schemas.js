@@ -7,6 +7,8 @@ export const createContact = z.strictObject({
   email: z.string().trim().toLowerCase().max(254).email().nullable().optional(),
   phone: z.string().trim().min(1).max(50).nullable().optional(),
   companyId: z.uuid(),
+  position: z.string().trim().max(255).nullable().optional(),
+  custom: z.record(z.string(), z.json()).optional(),
   responsibleUserId: userId,
 });
 export const updateContact = createContact.partial().refine(data => Object.keys(data).length > 0, 'At least one field is required');

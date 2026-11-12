@@ -4,9 +4,12 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { createDatabase } from '../src/database/client.js';
 import { startServer } from '../src/server.js';
+import { hashPassword } from '../src/modules/auth/password.js';
+import { signToken } from '../src/modules/auth/middleware.js';
 import { loadConfig } from '../src/config/env.js';
 
 const enabled = process.env.RUN_DB_TESTS === '1';
+const secret = 'integration-test-secret-32-characters';
 const logger = { info() {}, warn() {}, error() {} };
 async function fixture(t) {
   assert.ok(process.env.DATABASE_URL);
@@ -23,11 +26,14 @@ async function fixture(t) {
       await db.client.user.deleteMany({ where: { id: { in: [...users] } } });
     } finally { await db.disconnect(); }
   });
-  running = await startServer({ config: loadConfig({ DATABASE_URL: process.env.DATABASE_URL, PORT: '0' }), logger });
+  const actor = await db.client.user.create({ data: { email: `${randomUUID()}@example.invalid`, password_hash: hashPassword('password123') } });
+  users.add(actor.id);
+  const token = signToken(actor, secret);
+  running = await startServer({ config: loadConfig({ DATABASE_URL: process.env.DATABASE_URL, PORT: '0', JWT_SECRET: secret }), logger });
   const base = `http://127.0.0.1:${running.server.address().port}/api/v1`;
   async function request(path, method = 'GET', body, status = 200) {
-    const response = await fetch(base + path, { method, ...(body !== undefined && {
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    const response = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, ...(body !== undefined && {
+      body: JSON.stringify(body),
     }) });
     const result = response.status === 204 ? null : await response.json();
     if (path === '/companies' && method === 'POST' && result?.data?.id) companies.add(result.data.id);
@@ -39,21 +45,21 @@ async function fixture(t) {
     return result;
   }
   async function user() {
-    const value = await db.client.user.create({ data: { email: `${randomUUID()}@example.invalid` } });
+    const value = await db.client.user.create({ data: { email: `${randomUUID()}@example.invalid`, password_hash: hashPassword('password123') } });
     users.add(value.id);
     return value;
   }
-  return { db: db.client, request, user };
+  return { db: db.client, request, user, actor, base, token };
 }
 
 test('company CRUD, search, pagination and ownership', { skip: !enabled }, async t => {
-  const { request, user, db } = await fixture(t);
+  const { request, user, db, actor } = await fixture(t);
   const owner = await user();
   const name = `Test-${randomUUID()}`;
   const { data: company } = await request('/companies', 'POST', { name: ` ${name} `, responsibleUserId: owner.id }, 201);
   assert.equal(company.name, name);
-  assert.equal(company.createdById, null);
-  assert.equal(company.createdBy, null);
+  assert.equal(company.createdById, actor.id);
+  assert.equal(company.createdBy.id, actor.id);
   assert.deepEqual(company.responsibleUser, { id: owner.id, email: owner.email });
   assert.equal((await request(`/companies/${company.id}`)).data.id, company.id);
   assert.equal((await request(`/companies?search=${name.toUpperCase()}`)).data[0].id, company.id);
@@ -62,7 +68,7 @@ test('company CRUD, search, pagination and ownership', { skip: !enabled }, async
   await request('/companies', 'POST', { name: `${name}X100extra` }, 201);
   assert.deepEqual((await request(`/companies?search=${encodeURIComponent(`${name}_100%`)}`)).data.map(row => row.id), [special.id]);
   await request(`/companies/${company.id}`, 'PATCH', { createdById: owner.id }, 422);
-  assert.equal((await db.company.findUnique({ where: { id: company.id } })).createdById, null);
+  assert.equal((await db.company.findUnique({ where: { id: company.id } })).createdById, actor.id);
   // Simulate a future trusted server-side attribution, not an HTTP-provided identity.
   await db.company.update({ where: { id: company.id }, data: { createdById: owner.id } });
   const updated = await request(`/companies/${company.id}`, 'PATCH', { name: 'Renamed', responsibleUserId: null });
@@ -76,7 +82,7 @@ test('company CRUD, search, pagination and ownership', { skip: !enabled }, async
 });
 
 test('contact CRUD, company filtering, FK restrictions and reassignment', { skip: !enabled }, async t => {
-  const { request, user, db } = await fixture(t);
+  const { request, user, db, actor } = await fixture(t);
   const owner = await user();
   const a = (await request('/companies', 'POST', { name: 'A' }, 201)).data;
   const b = (await request('/companies', 'POST', { name: 'B' }, 201)).data;
@@ -87,7 +93,7 @@ test('contact CRUD, company filtering, FK restrictions and reassignment', { skip
   }, 201)).data;
   assert.equal(contact.firstName, 'Anna');
   assert.equal(contact.email, email);
-  assert.equal(contact.createdById, null);
+  assert.equal(contact.createdById, actor.id);
   assert.equal(contact.responsibleUser.id, owner.id);
   assert.equal(contact.company.id, a.id);
   assert.equal((await request(`/contacts/${contact.id}`)).data.id, contact.id);
@@ -145,7 +151,7 @@ test('missing relations, invalid requests and author spoofing are rejected', { s
   await request(`/contacts/${contact.id}`, 'PATCH', { responsibleUserId: missing }, 422);
   await request(`/contacts/${contact.id}`, 'PATCH', {}, 422);
   await request('/contacts/not-uuid', 'GET', undefined, 422);
-  await assert.rejects(db.contact.create({ data: { ...body, companyId: missing } }), { code: 'P2003' });
+  await assert.rejects(db.contact.create({ data: { ...body, full_name: 'A B', companyId: missing } }), { code: 'P2003' });
   assert.equal((await request(`/contacts/${contact.id}`)).data.companyId, company.id);
 });
 
@@ -166,4 +172,58 @@ test('duplicate email is normalized and concurrent creates cannot bypass uniquen
   ]);
   assert.equal(outcomes.filter(result => result.status === 'fulfilled').length, 1);
   assert.match(outcomes.find(result => result.status === 'rejected').reason.message, /DUPLICATE_RECORD/);
+});
+
+test('merged auth protects CRUD, attributes creators and supports real admin management', { skip: !enabled }, async t => {
+  const { db, actor, base, request, user } = await fixture(t);
+  for (const path of ['/companies', '/contacts']) {
+    assert.equal((await fetch(base + path)).status, 401);
+    assert.equal((await fetch(base + path, { headers: { Authorization: 'Bearer invalid' } })).status, 401);
+  }
+  const login = await fetch(base + '/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: actor.email, password: 'password123' }) });
+  assert.equal(login.status, 200);
+  const { data } = await login.json();
+  assert.ok(!JSON.stringify(data).includes('password_hash'));
+  const headers = { Authorization: `Bearer ${data.token}` };
+  assert.equal((await fetch(base + '/companies', { headers })).status, 200);
+  assert.equal((await fetch(base + '/users', { headers })).status, 403);
+  await db.user.update({ where: { id: actor.id }, data: { role: 'admin' } });
+  const list = await fetch(base + '/users', { headers });
+  assert.equal(list.status, 200);
+  assert.ok(!(await list.text()).includes('password_hash'));
+  const company = (await request('/companies', 'POST', { name: 'Attributed' }, 201)).data;
+  assert.equal(company.createdById, actor.id);
+  const disabled = await user();
+  await db.user.update({ where: { id: disabled.id }, data: { password_hash: '' } });
+  const rejected = await fetch(base + '/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: disabled.email, password: 'anything' }) });
+  assert.equal(rejected.status, 401);
+});
+
+test('Vlad fields and legacy full names survive CRUD edits', { skip: !enabled }, async t => {
+  const { db, request } = await fixture(t);
+  const company = (await request('/companies', 'POST', {
+    name: 'Legacy-compatible', industry: 'Finance', website: 'https://example.invalid', custom: { region: 'UA' },
+  }, 201)).data;
+  assert.equal(company.industry, 'Finance');
+  assert.deepEqual(company.custom, { region: 'UA' });
+  const legacy = await db.contact.create({ data: {
+    companyId: company.id, full_name: 'Ім’я без надійного поділу', position: 'Director', custom: { imported: true },
+  } });
+  const edited = (await request(`/contacts/${legacy.id}`, 'PATCH', { phone: '+380123456789' })).data;
+  assert.equal(edited.full_name, legacy.full_name);
+  assert.equal(edited.firstName, null);
+  assert.equal(edited.lastName, null);
+  assert.equal(edited.position, 'Director');
+  assert.deepEqual(edited.custom, { imported: true });
+  assert.equal(edited.createdById, null);
+  const created = (await request('/contacts', 'POST', {
+    firstName: 'Anna', lastName: 'Smith', companyId: company.id, position: 'Manager', custom: { team: 'A' },
+  }, 201)).data;
+  assert.equal(created.full_name, 'Anna Smith');
+  const updated = (await request(`/contacts/${created.id}`, 'PATCH', { lastName: 'Jones' })).data;
+  assert.equal(updated.full_name, 'Anna Jones');
+  assert.equal(updated.position, 'Manager');
+  assert.deepEqual(updated.custom, { team: 'A' });
 });

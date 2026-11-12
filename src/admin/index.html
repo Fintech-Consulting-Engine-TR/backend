@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Адмінка</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+    input, select, button { padding: .4rem; margin: .2rem 0; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border-bottom: 1px solid #ddd; padding: .4rem; text-align: left; }
+    #error { color: #b00020; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Адмінка</h1>
+  <p id="error"></p>
+
+  <form id="login-form">
+    <h2>Вхід</h2>
+    <input name="email" type="email" placeholder="Email" required><br>
+    <input name="password" type="password" placeholder="Пароль" required><br>
+    <button>Увійти</button>
+  </form>
+
+  <div id="panel" class="hidden">
+    <p>Ви увійшли як <b id="me"></b> <button id="logout">Вийти</button></p>
+
+    <h2>Створити користувача</h2>
+    <form id="create-form">
+      <input name="email" type="email" placeholder="Email" required>
+      <input name="password" type="password" placeholder="Пароль (мін. 8)" minlength="8" required>
+      <select name="role">
+        <option value="user">user</option>
+        <option value="admin">admin</option>
+      </select>
+      <button>Створити</button>
+    </form>
+
+    <h2>Користувачі</h2>
+    <table>
+      <thead><tr><th>Email</th><th>Роль</th><th>Створено</th></tr></thead>
+      <tbody id="users"></tbody>
+    </table>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

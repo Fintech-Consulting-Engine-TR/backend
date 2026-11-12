@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
 import { Router } from 'express';
+import { signToken } from '../src/modules/auth/middleware.js';
 import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config/env.js';
 import { AppError } from '../src/http/errors.js';
@@ -12,7 +13,7 @@ import { validate } from '../src/http/validate.js';
 import { startServer } from '../src/server.js';
 
 const logger = { info() {}, error() {}, warn() {} };
-const config = loadConfig({ NODE_ENV: 'production', PORT: '0', CORS_ORIGINS: 'http://localhost:5173' });
+const config = loadConfig({ NODE_ENV: 'production', PORT: '0', CORS_ORIGINS: 'http://localhost:5173', JWT_SECRET: 'test-secret-with-at-least-32-characters' });
 async function fixture(t, modules = [], db) {
   const server = createServer(createApp({ config, logger, modules, db }));
   server.listen(0, '127.0.0.1');
@@ -222,7 +223,8 @@ test('versioned health and Swagger/OpenAPI describe actual routes', async t => {
   assert.equal(response.status, 200);
   const document = await response.json();
   assert.equal(document.openapi, '3.0.3');
-  for (const path of ['/api/health', '/api/v1/health']) {
+  // Only the public health paths are plain GETs; the rest need a token or a body.
+  for (const path of Object.keys(document.paths).filter(p => p.endsWith('/health'))) {
     assert.equal((await fetch(base + path)).status, 200);
     assert.ok(document.paths[path].get.responses['200']);
   }
@@ -242,17 +244,19 @@ test('database URL validation is safe', () => {
 
 
 test('CRUD validation precedes queries and unexpected database failures are safe 500s', async t => {
-  const base = await fixture(t, [], { company: {
+  const actorId = 'bac4f369-2428-4c20-8cf1-a2b7f159658d';
+  const headers = { Authorization: `Bearer ${signToken({ id: actorId }, config.jwtSecret)}` };
+  const base = await fixture(t, [], { user: { findUnique: async () => ({ id: actorId }) }, company: {
     findMany() { throw new Error('postgresql://private-secret@example.invalid/db'); },
   } });
-  const failed = await fetch(`${base}/api/v1/companies`);
+  const failed = await fetch(`${base}/api/v1/companies`, { headers });
   assert.equal(failed.status, 500);
   const body = await failed.json();
   checkError(body, failed, 'INTERNAL_ERROR');
   assert.ok(!JSON.stringify(body).includes('private-secret'));
   assert.ok(!JSON.stringify(body).includes('stack'));
   const invalid = await fetch(`${base}/api/v1/companies`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'x', createdById: 'forged' }),
+    method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'x', createdById: 'forged' }),
   });
   assert.equal(invalid.status, 422);
   const malformed = await fetch(`${base}/api/v1/contacts`, {

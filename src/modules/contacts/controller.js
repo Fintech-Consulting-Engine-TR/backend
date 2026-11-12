@@ -1,7 +1,7 @@
 export function createContactController(service) {
   return {
     async create(req, res) {
-      const data = await service.create(req.body);
+      const data = await service.create(req.body, req.user.id);
       res.location(`/api/v1/contacts/${data.id}`).status(201).json({ data });
     },
     async list(req, res) { res.json({ data: await service.list(req.validatedQuery) }); },

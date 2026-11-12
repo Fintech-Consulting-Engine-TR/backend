@@ -1,3 +1,4 @@
+import { authenticate } from './modules/auth/middleware.js';
 import { createCompanyRouter } from './modules/companies/routes.js';
 import { createContactRouter } from './modules/contacts/routes.js';
 import { createContactController } from './modules/contacts/controller.js';
@@ -7,7 +8,7 @@ import swaggerUi from 'swagger-ui-express';
 import { openapi, healthPaths } from './openapi/document.js';
 import { createHealthRouter } from './modules/health/routes.js';
 
-export function createApiRouter(modules = [], db) {
+export function createApiRouter(modules = [], db, config) {
   const router = Router();
   for (const path of healthPaths) router.use(path.slice('/api'.length), createHealthRouter());
   router.get('/openapi.json', (req, res) => res.json(openapi));
@@ -18,6 +19,7 @@ export function createApiRouter(modules = [], db) {
     if (!db) return next(new Error('Database is not configured'));
     next();
   });
+  router.use(['/v1/companies', '/v1/contacts'], authenticate({ prisma: db, config }));
   router.use('/v1/companies', createCompanyRouter(db, contacts));
   router.use('/v1/contacts', createContactRouter(contacts));
   for (const { path, router: moduleRouter } of modules) {

@@ -1,7 +1,7 @@
 export function createCompanyController(service) {
   return {
     async create(req, res) {
-      const data = await service.create(req.body);
+      const data = await service.create(req.body, req.user.id);
       res.location(`/api/v1/companies/${data.id}`).status(201).json({ data });
     },
     async list(req, res) { res.json({ data: await service.list(req.validatedQuery) }); },

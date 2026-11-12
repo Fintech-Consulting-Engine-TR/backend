@@ -2,9 +2,9 @@ import { ownership, requireCompany, requireResponsibleUser } from '../shared.js'
 
 export function createCompanyService(db) {
   return {
-    async create(data) {
+    async create(data, createdById) {
       await requireResponsibleUser(db, data.responsibleUserId);
-      return db.company.create({ data, include: ownership });
+      return db.company.create({ data: { ...data, createdById }, include: ownership });
     },
     list({ search, limit, offset }) {
       return db.company.findMany({
