@@ -19,7 +19,7 @@
     "db:status": "prisma migrate status",
     "db:check": "node scripts/db-check.js",
     "postinstall": "prisma generate",
-    "test:db": "RUN_DB_TESTS=1 node --test test/database.integration.js"
+    "test:db": "RUN_DB_TESTS=1 node --test test/*.integration.js"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.1",

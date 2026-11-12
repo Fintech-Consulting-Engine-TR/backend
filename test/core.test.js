@@ -13,8 +13,8 @@ import { startServer } from '../src/server.js';
 
 const logger = { info() {}, error() {}, warn() {} };
 const config = loadConfig({ NODE_ENV: 'production', PORT: '0', CORS_ORIGINS: 'http://localhost:5173' });
-async function fixture(t, modules = []) {
-  const server = createServer(createApp({ config, logger, modules }));
+async function fixture(t, modules = [], db) {
+  const server = createServer(createApp({ config, logger, modules, db }));
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
@@ -222,7 +222,7 @@ test('versioned health and Swagger/OpenAPI describe actual routes', async t => {
   assert.equal(response.status, 200);
   const document = await response.json();
   assert.equal(document.openapi, '3.0.3');
-  for (const path of Object.keys(document.paths)) {
+  for (const path of ['/api/health', '/api/v1/health']) {
     assert.equal((await fetch(base + path)).status, 200);
     assert.ok(document.paths[path].get.responses['200']);
   }
@@ -238,4 +238,42 @@ test('database URL validation is safe', () => {
   for (const url of ['not-a-url', 'https://example.com/db', 'postgresql://localhost']) {
     assert.throws(() => loadConfig({ DATABASE_URL: url }), /Invalid DATABASE_URL/);
   }
+});
+
+
+test('CRUD validation precedes queries and unexpected database failures are safe 500s', async t => {
+  const base = await fixture(t, [], { company: {
+    findMany() { throw new Error('postgresql://private-secret@example.invalid/db'); },
+  } });
+  const failed = await fetch(`${base}/api/v1/companies`);
+  assert.equal(failed.status, 500);
+  const body = await failed.json();
+  checkError(body, failed, 'INTERNAL_ERROR');
+  assert.ok(!JSON.stringify(body).includes('private-secret'));
+  assert.ok(!JSON.stringify(body).includes('stack'));
+  const invalid = await fetch(`${base}/api/v1/companies`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'x', createdById: 'forged' }),
+  });
+  assert.equal(invalid.status, 422);
+  const malformed = await fetch(`${base}/api/v1/contacts`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{bad',
+  });
+  assert.equal(malformed.status, 400);
+});
+
+test('OpenAPI describes CRUD methods, input protection and nullable ownership', async t => {
+  const base = await fixture(t);
+  const document = await (await fetch(`${base}/api/openapi.json`)).json();
+  for (const [plural, model] of [['companies', 'Company'], ['contacts', 'Contact']]) {
+    assert.deepEqual(Object.keys(document.paths[`/api/v1/${plural}`]).sort(), ['get', 'post']);
+    assert.deepEqual(Object.keys(document.paths[`/api/v1/${plural}/{id}`]).sort(), ['delete', 'get', 'patch']);
+    assert.ok(document.paths[`/api/v1/${plural}/{id}`].delete.responses['204']);
+    assert.equal(document.components.schemas[`Create${model}`].additionalProperties, false);
+    assert.equal(document.components.schemas[`Create${model}`].properties.createdById, undefined);
+    assert.equal(document.components.schemas[`Update${model}`].minProperties, 1);
+    assert.equal(document.components.schemas[model].properties.createdById.readOnly, true);
+    assert.equal(document.components.schemas[model].properties.createdById.nullable, true);
+  }
+  assert.equal(document.components.schemas.CreateContact.properties.email.format, 'email');
+  assert.ok(document.paths['/api/v1/companies/{id}/contacts'].get.responses['404']);
 });

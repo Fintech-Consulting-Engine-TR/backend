@@ -11,5 +11,48 @@ model User {
   email      String   @unique
   created_at DateTime @default(now()) @db.Timestamptz(3)
 
+  createdCompanies Company[] @relation("CompanyCreator")
+  responsibleCompanies Company[] @relation("CompanyResponsible")
+  createdContacts Contact[] @relation("ContactCreator")
+  responsibleContacts Contact[] @relation("ContactResponsible")
+
   @@map("users")
+}
+
+
+model Company {
+  id                String   @id @default(uuid()) @db.Uuid
+  name              String   @db.VarChar(255)
+  createdById       String?  @db.Uuid
+  responsibleUserId String?  @db.Uuid
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(3)
+  createdBy         User?    @relation("CompanyCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  responsibleUser   User?    @relation("CompanyResponsible", fields: [responsibleUserId], references: [id], onDelete: Restrict)
+  contacts          Contact[]
+
+  @@index([createdById])
+  @@index([responsibleUserId])
+  @@map("companies")
+}
+
+model Contact {
+  id                String   @id @default(uuid()) @db.Uuid
+  firstName         String   @db.VarChar(100)
+  lastName          String   @db.VarChar(100)
+  email             String?  @unique @db.VarChar(254)
+  phone             String?  @db.VarChar(50)
+  companyId         String   @db.Uuid
+  createdById       String?  @db.Uuid
+  responsibleUserId String?  @db.Uuid
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(3)
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  createdBy         User?    @relation("ContactCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  responsibleUser   User?    @relation("ContactResponsible", fields: [responsibleUserId], references: [id], onDelete: Restrict)
+
+  @@index([companyId])
+  @@index([createdById])
+  @@index([responsibleUserId])
+  @@map("contacts")
 }

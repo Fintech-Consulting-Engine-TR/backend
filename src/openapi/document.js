@@ -1,3 +1,4 @@
+import { crudPaths, crudSchemas } from './crud.js';
 const errorResponse = description => ({
   description,
   content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
@@ -39,4 +40,14 @@ export const openapi = {
       } },
     },
   } },
+};
+
+Object.assign(openapi.paths, crudPaths);
+Object.assign(openapi.components.schemas, crudSchemas);
+openapi.components.schemas.Error.properties.error.properties.details = {
+  type: 'array', items: {
+    type: 'object', required: ['in', 'path', 'message'], properties: {
+      in: { type: 'string', enum: ['params', 'query', 'body'] }, path: { type: 'string' }, message: { type: 'string' },
+    },
+  },
 };

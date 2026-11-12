@@ -6,7 +6,7 @@ import { AppError, notFound, errorHandler } from './http/errors.js';
 import { requestContext } from './http/request-context.js';
 
 // Construction has no listening, dotenv or process-signal side effects.
-export function createApp({ config, logger, modules = [] }) {
+export function createApp({ config, logger, modules = [], db }) {
   const app = express();
   app.set('env', config.nodeEnv);
   app.disable('x-powered-by');
@@ -23,7 +23,7 @@ export function createApp({ config, logger, modules = [] }) {
     credentials: false,
   }));
   app.use(express.json({ limit: '100kb' }));
-  app.use('/api', createApiRouter(modules));
+  app.use('/api', createApiRouter(modules, db));
   app.use(notFound);
   app.use(errorHandler(logger));
   return app;

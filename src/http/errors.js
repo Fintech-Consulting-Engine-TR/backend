@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+
 export class AppError extends Error {
   // Only deliberate, public-safe messages belong in AppError.
   constructor(status, code, message, details) {
@@ -29,6 +31,13 @@ export function errorHandler(logger) {
     let details;
     if (err instanceof AppError) {
       ({ status, code, message, details } = err);
+    } else if (err instanceof Prisma.PrismaClientKnownRequestError && ['P2002', 'P2003', 'P2025'].includes(err.code)) {
+      const mapped = {
+        P2002: [409, 'DUPLICATE_RECORD', 'A record with this unique value already exists'],
+        P2003: [409, 'RELATION_CONFLICT', 'Related records prevent this operation'],
+        P2025: [404, 'NOT_FOUND', 'Record not found'],
+      };
+      [status, code, message] = mapped[err.code];
     } else if (err?.type === 'entity.parse.failed') {
       status = 400; code = 'INVALID_JSON'; message = 'Request body must be valid JSON';
     } else if (err?.type === 'entity.too.large') {
