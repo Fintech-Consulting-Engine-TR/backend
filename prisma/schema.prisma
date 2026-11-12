@@ -6,10 +6,50 @@ datasource db {
   provider = "postgresql"
 }
 
+enum Role {
+  admin
+  user
+
+  @@map("role")
+}
+
 model User {
-  id         String   @id @default(uuid()) @db.Uuid
-  email      String   @unique
-  created_at DateTime @default(now()) @db.Timestamptz(3)
+  id            String   @id @default(uuid()) @db.Uuid
+  email         String   @unique
+  password_hash String
+  role          Role     @default(user)
+  created_at    DateTime @default(now()) @db.Timestamptz(3)
 
   @@map("users")
+}
+
+// Company is the central CRM entity. `custom` holds extra columns
+// until the fullstack data model decides which become real fields.
+model Company {
+  id         String    @id @default(uuid()) @db.Uuid
+  name       String
+  industry   String?
+  website    String?
+  custom     Json      @default("{}")
+  created_at DateTime  @default(now()) @db.Timestamptz(3)
+  updated_at DateTime  @updatedAt @db.Timestamptz(3)
+  contacts   Contact[]
+
+  @@map("companies")
+}
+
+model Contact {
+  id         String   @id @default(uuid()) @db.Uuid
+  company_id String   @db.Uuid
+  company    Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  full_name  String
+  position   String?
+  email      String?
+  phone      String?
+  custom     Json     @default("{}")
+  created_at DateTime @default(now()) @db.Timestamptz(3)
+  updated_at DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([company_id])
+  @@map("contacts")
 }

@@ -15,10 +15,10 @@ test('PostgreSQL migration, User persistence and unique email', { skip: !enabled
   const email = `test-${randomUUID()}@example.invalid`;
   try {
     await database.connect();
-    const user = await database.client.user.create({ data: { email } });
+    const user = await database.client.user.create({ data: { email, password_hash: 'test-hash' } });
     assert.match(user.id, /^[0-9a-f-]{36}$/);
     assert.ok(user.created_at instanceof Date);
-    await assert.rejects(database.client.user.create({ data: { email } }), { code: 'P2002' });
+    await assert.rejects(database.client.user.create({ data: { email, password_hash: 'test-hash' } }), { code: 'P2002' });
     await database.disconnect();
     await database.connect();
     assert.equal((await database.client.user.findUnique({ where: { email } })).id, user.id);
@@ -29,7 +29,7 @@ test('PostgreSQL migration, User persistence and unique email', { skip: !enabled
 });
 
 test('real server connects to PostgreSQL, serves HTTP and shuts down', { skip: !enabled }, async () => {
-  const { server, stop } = await startServer({ config: loadConfig({ DATABASE_URL: process.env.DATABASE_URL, PORT: '0' }), logger });
+  const { server, stop } = await startServer({ config: loadConfig({ DATABASE_URL: process.env.DATABASE_URL, PORT: '0', JWT_SECRET: 'x'.repeat(32) }), logger });
   try {
     const base = `http://127.0.0.1:${server.address().port}`;
     for (const path of ['/api/health', '/api/v1/health', '/api/docs/', '/api/openapi.json']) {
@@ -40,7 +40,7 @@ test('real server connects to PostgreSQL, serves HTTP and shuts down', { skip: !
 
 test('unreachable PostgreSQL fails startup with a safe error', { skip: !enabled }, async () => {
   await assert.rejects(startServer({
-    config: loadConfig({ DATABASE_URL: 'postgresql://test:secret-marker@127.0.0.1:1/test', PORT: '0' }), logger,
+    config: loadConfig({ DATABASE_URL: 'postgresql://test:secret-marker@127.0.0.1:1/test', PORT: '0', JWT_SECRET: 'x'.repeat(32) }), logger,
   }), error => {
     assert.match(error.message, /Database connection failed/);
     assert.ok(!error.message.includes('secret-marker'));

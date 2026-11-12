@@ -5,11 +5,12 @@ import { loadConfig } from './config/env.js';
 import { createLogger } from './logger.js';
 import { createApp } from './app.js';
 import { createDatabase } from './database/client.js';
+import { createModules } from './modules/index.js';
 
 export async function startServer({ config = loadConfig(), logger = createLogger(config) } = {}) {
   const database = config.databaseUrl ? createDatabase(config.databaseUrl) : undefined;
   await database?.connect();
-  const server = createServer(createApp({ config, logger }));
+  const server = createServer(createApp({ config, logger, modules: database ? createModules({ prisma: database.client, config }) : [] }));
   server.requestTimeout = 30000;
   server.headersTimeout = 15000;
   server.keepAliveTimeout = 5000;

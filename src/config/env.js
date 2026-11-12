@@ -31,8 +31,11 @@ export function loadConfig(env = process.env) {
       throw new Error('Invalid DATABASE_URL');
     }
   }
+  // The secret is only needed when the API with a database (and so logins) is enabled.
+  const jwtSecret = env.JWT_SECRET || undefined;
+  if (databaseUrl && (!jwtSecret || jwtSecret.length < 32)) throw new Error('Invalid JWT_SECRET');
   return Object.freeze({
-    databaseUrl, nodeEnv, host, logLevel, corsOrigins: Object.freeze(corsOrigins),
+    databaseUrl, jwtSecret, nodeEnv, host, logLevel, corsOrigins: Object.freeze(corsOrigins),
     port: integer(env.PORT, 3000, 'PORT', 0, 65535),
     shutdownTimeoutMs: integer(env.SHUTDOWN_TIMEOUT_MS, 10000, 'SHUTDOWN_TIMEOUT_MS', 1, 120000),
   });

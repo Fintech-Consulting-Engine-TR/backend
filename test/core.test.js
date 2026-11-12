@@ -222,7 +222,8 @@ test('versioned health and Swagger/OpenAPI describe actual routes', async t => {
   assert.equal(response.status, 200);
   const document = await response.json();
   assert.equal(document.openapi, '3.0.3');
-  for (const path of Object.keys(document.paths)) {
+  // Only the public health paths are plain GETs; the rest need a token or a body.
+  for (const path of Object.keys(document.paths).filter(p => p.endsWith('/health'))) {
     assert.equal((await fetch(base + path)).status, 200);
     assert.ok(document.paths[path].get.responses['200']);
   }

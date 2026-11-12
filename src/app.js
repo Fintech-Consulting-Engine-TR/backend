@@ -1,4 +1,5 @@
 import express from 'express';
+import { fileURLToPath } from 'node:url';
 import helmet from 'helmet';
 import cors from 'cors';
 import { createApiRouter } from './routes.js';
@@ -24,6 +25,8 @@ export function createApp({ config, logger, modules = [] }) {
   }));
   app.use(express.json({ limit: '100kb' }));
   app.use('/api', createApiRouter(modules));
+  // Minimal admin panel: plain HTML + JS that talks to /api/v1.
+  app.use('/admin', express.static(fileURLToPath(new URL('./admin', import.meta.url))));
   app.use(notFound);
   app.use(errorHandler(logger));
   return app;
